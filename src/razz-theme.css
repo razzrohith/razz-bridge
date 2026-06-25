@@ -1,0 +1,53 @@
+/* Razz Bridge dark theme */
+:root {
+  --color-bg: #111317;
+  --color-bg2: #1c1f26;
+  --color-bg3: #23272f;
+  --color-fg: #e2e4e8;
+  --color-fg2: #9ba3b2;
+  --color-accent: #4f8ef7;
+  --color-accent2: #2d6fd4;
+  --color-border: #2e3340;
+  --color-danger: #e05555;
+  --color-success: #3cb87a;
+}
+html, body {
+  background: var(--color-bg) !important;
+  color: var(--color-fg) !important;
+}
+/* Header / toolbar */
+header, nav, .toolbar, [class*="header"], [class*="nav-bar"] {
+  background: var(--color-bg2) !important;
+  border-bottom: 1px solid var(--color-border) !important;
+}
+/* Cards / panels */
+.card, .panel, [class*="dialog"], [class*="modal"],
+[class*="overlay"], [class*="dropdown"] {
+  background: var(--color-bg3) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-fg) !important;
+}
+/* Inputs + selects */
+input, select, textarea, button {
+  background: var(--color-bg3) !important;
+  color: var(--color-fg) !important;
+  border: 1px solid var(--color-border) !important;
+}
+button[class*="primary"], [class*="btn-primary"] {
+  background: var(--color-accent) !important;
+  color: #fff !important;
+  border-color: var(--color-accent2) !important;
+}
+/* Links */
+a { color: var(--color-accent) !important; }
+/* KVM video area */
+#remote-screen, video, canvas {
+  background: #000 !important;
+  border: 2px solid var(--color-border) !important;
+}
+/* Status indicators */
+[class*="connected"], [class*="online"] { color: var(--color-success) !important; }
+[class*="error"], [class*="offline"]    { color: var(--color-danger)  !important; }
+/* Scrollbars */
+::-webkit-scrollbar { width: 8px; background: var(--color-bg2); }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 4px; }

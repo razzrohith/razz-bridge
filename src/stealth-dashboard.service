@@ -1,0 +1,13 @@
+[Unit]
+Description=Razz Bridge Stealth Dashboard
+After=network.target nginx.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /usr/local/bin/stealth-dashboard.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
