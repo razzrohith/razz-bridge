@@ -123,8 +123,9 @@ systemctl enable razz-mdns-alt 2>/dev/null || true
 systemctl restart razz-mdns-alt 2>/dev/null || true
 log "Secondary mDNS: ${RAZZ_HOST2}.local"
 
-# ── 6. Flask ─────────────────────────────────────────────────
-python3 -c "import flask" 2>/dev/null || apt-get install -y -q python3-flask
+# ── 6. Flask + bcrypt ────────────────────────────────────────
+python3 -c "import flask"  2>/dev/null || apt-get install -y -q python3-flask
+python3 -c "import bcrypt" 2>/dev/null || apt-get install -y -q python3-bcrypt
 
 # ── 7. Stealth dashboard ─────────────────────────────────────
 log "Installing stealth dashboard..."
@@ -186,9 +187,21 @@ fi
 echo "$USB_VID" > "$USB_SYS/idVendor"  2>/dev/null || true
 echo "$USB_PID" > "$USB_SYS/idProduct" 2>/dev/null || true
 echo "$USB_BCD" > "$USB_SYS/bcdDevice" 2>/dev/null || true
+# Full USB device descriptor — match K120 (USB 2.0, class defined at interface level)
+echo "0x0200" > "$USB_SYS/bcdUSB"          2>/dev/null || true
+echo "0x00"   > "$USB_SYS/bDeviceClass"    2>/dev/null || true
+echo "0x00"   > "$USB_SYS/bDeviceSubClass" 2>/dev/null || true
+echo "0x00"   > "$USB_SYS/bDeviceProtocol" 2>/dev/null || true
+echo "0x08"   > "$USB_SYS/bMaxPacketSize0" 2>/dev/null || true
 if [[ -n "$USB_UDC" ]]; then
     sleep 0.2
     echo "$USB_UDC" > "$USB_SYS/UDC" 2>/dev/null || true
+fi
+
+# Backup gadget init script before first patch
+if [[ -f "$GADGET_INIT" && ! -f "${GADGET_INIT}.orig" ]]; then
+    cp "$GADGET_INIT" "${GADGET_INIT}.orig"
+    log "init-usb-gadget backed up --> ${GADGET_INIT}.orig"
 fi
 
 # Patch the gadget init script so identity survives reboots
@@ -212,22 +225,29 @@ c = re.sub(r'echo \S+ > "\$\{GADGET_DIR\}/idProduct"',
            f'echo {pid} > "${{GADGET_DIR}}/idProduct"', c)
 c = re.sub(r'echo \S+ > "\$\{GADGET_DIR\}/bcdDevice"',
            f'echo {bcd} > "${{GADGET_DIR}}/bcdDevice"', c)
+# Patch bcdUSB to 0x0200 (USB 2.0) if present
+c = re.sub(r'echo \S+ > "\$\{GADGET_DIR\}/bcdUSB"',
+           'echo 0x0200 > "${GADGET_DIR}/bcdUSB"', c)
+# Patch device class to 0x00 (class defined at interface level, like a real K120)
+# Only replace if the script explicitly sets non-zero values — 0xEF/0x02/0x01 = IAD composite
+c = re.sub(r'echo 0x[Ee][Ff] > "\$\{GADGET_DIR\}/bDeviceClass"',
+           'echo 0x00 > "${GADGET_DIR}/bDeviceClass"', c)
+c = re.sub(r'echo 0x0[12] > "\$\{GADGET_DIR\}/bDeviceSubClass"',
+           'echo 0x00 > "${GADGET_DIR}/bDeviceSubClass"', c)
+c = re.sub(r'echo 0x0[12] > "\$\{GADGET_DIR\}/bDeviceProtocol"',
+           'echo 0x00 > "${GADGET_DIR}/bDeviceProtocol"', c)
 with open(p, "w") as f: f.write(c)
-print("  USB init script patched (strings + VID/PID + bcdDevice)")
+print("  USB init script patched (strings + VID/PID + bcdDevice + bcdUSB + device class)")
 PYEOF
     systemctl restart tinypilot 2>/dev/null || true
     sleep 2
 fi
 
-# Generate stealth panel password (first install only)
-STEALTH_PASS="$(python3 -c "import secrets; print(secrets.token_urlsafe(12))")"
-
-# Write stealth config with USB + auth
+# Write stealth config (auth always defaults to "lol" via bcrypt; dashboard handles this on startup too)
 _MFR="$USB_MFR" _PROD="$USB_PROD" _SER="$USB_SER" \
 _VID="$USB_VID" _PID="$USB_PID" \
-_ETH0="$ETH0_MAC" _WLAN0="$WLAN0_MAC" \
-_PASS="$STEALTH_PASS" python3 << 'PYEOF'
-import json, os, hashlib, secrets
+_ETH0="$ETH0_MAC" _WLAN0="$WLAN0_MAC" python3 << 'PYEOF'
+import json, os, secrets
 path = "/etc/stealth-config.json"
 try:
     with open(path) as f: cfg = json.load(f)
@@ -243,26 +263,19 @@ if not cfg.get("usb", {}).get("enabled"):
         "idProduct":    os.environ["_PID"],
         "profile_idx":  0,
     }
-cfg.setdefault("ssh_banner", True)
+cfg.setdefault("safe_mode", False)
 cfg.setdefault("mac", {
     "enabled": False,
     "eth0":    os.environ.get("_ETH0", ""),
     "wlan0":   os.environ.get("_WLAN0", ""),
 })
-cfg.setdefault("razz_block", False)
-cfg.setdefault("safe_mode", False)
-# Auth: only set on first install (don't overwrite existing password)
-if "auth" not in cfg or not cfg["auth"].get("password_hash"):
-    pw = os.environ.get("_PASS", "razz")
-    cfg["auth"] = {
-        "password_hash": hashlib.sha256(pw.encode()).hexdigest(),
-        "secret_key":    secrets.token_hex(32),
-    }
-    print(f"  panel auth initialized")
-else:
-    print("  panel auth already set -- preserving existing password")
+# Auth: default password "lol" set by stealth-dashboard.py on first startup.
+# Only ensure secret_key exists here so Flask can start.
+if not cfg.get("auth", {}).get("secret_key"):
+    cfg.setdefault("auth", {})["secret_key"] = secrets.token_hex(32)
+    print("  secret_key generated")
 with open(path, "w") as f: json.dump(cfg, f, indent=2)
-print("  stealth config written")
+print("  stealth config written  (default panel password: lol)")
 PYEOF
 
 # ── 9. Hide SSH OS fingerprint + move port ───────────────────
@@ -274,31 +287,9 @@ sed -i '/^DebianBanner/d; /^Port /d' /etc/ssh/sshd_config
 systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
 log "SSH: fingerprint hidden, port --> $RAZZ_SSH_PORT"
 
-# Update fail2ban SSH port (in case it was set earlier with port 22)
-sed -i "s/^port\s*=.*/port = $RAZZ_SSH_PORT/" /etc/fail2ban/jail.local 2>/dev/null || true
-
 # ── 9b. DHCP naturalness — stop broadcasting hostname + vendor class ──
 # Keyboards don't send DHCP hostnames or Linux vendor class strings
 DHCPCD="/etc/dhcpcd.conf"
 if [[ -f "$DHCPCD" ]]; then
     # Remove any existing hostname / vendorclassid lines
-    sed -i '/^\(hostname\|vendorclassid\|clientid\)/d' "$DHCPCD"
-    # nohook hostname = don't send hostname in DHCP requests
-    echo "nohook hostname"  >> "$DHCPCD"
-    # Empty vendorclassid = don't reveal "dhcpcd:Linux:armv8..."
-    echo 'vendorclassid ""' >> "$DHCPCD"
-    log "DHCP: hostname + vendor class suppressed"
-    systemctl restart dhcpcd 2>/dev/null || true
-fi
-
-# ── 9. Razz theme files ───────────────────────────────────────
-log "Installing theme..."
-curl -fsSL "$REPO_RAW/src/razz-theme.css" -o /opt/razz-theme.css
-curl -fsSL "$REPO_RAW/src/razz-brand.js"  -o /opt/razz-brand.js
-
-# ── 10. nginx patch ───────────────────────────────────────────
-log "Patching nginx config..."
-_RAZZ_HOST="$RAZZ_HOST" python3 << 'PYEOF'
-import re, sys, os
-rh   = os.environ["_RAZZ_HOST"]
-path = "/
+    
