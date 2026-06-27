@@ -1341,11 +1341,12 @@ def api_wifi_saved():
         r = _nm("-t", "-f", "NAME,TYPE,ACTIVE", "connection", "show")
         nets = []
         for line in r.stdout.splitlines():
-            parts = line.split(":")
-            if len(parts) >= 2 and parts[1] == "802-11-wireless":
+            # rsplit from right so SSIDs containing ':' don't shift TYPE/ACTIVE fields
+            parts = line.rsplit(":", 2)
+            if len(parts) >= 2 and parts[-2] == "802-11-wireless":
                 nets.append({
                     "name":   parts[0],
-                    "active": (parts[2].lower() == "yes") if len(parts) > 2 else False,
+                    "active": (parts[-1].lower() == "yes") if len(parts) > 2 else False,
                 })
         return jsonify(nets)
     except Exception as e:
@@ -1360,13 +1361,16 @@ def api_wifi_scan():
                 "device", "wifi", "list", "--rescan", "yes", timeout=22)
         nets, seen = [], set()
         for line in r.stdout.splitlines():
-            parts = line.split(":")
-            ssid  = parts[0].strip() if parts else ""
+            # rsplit from right so SSIDs containing ':' don't shift SIGNAL/SECURITY fields
+            parts = line.rsplit(":", 2)
+            if len(parts) < 3:
+                continue
+            ssid = parts[0].strip()
             if not ssid or ssid == "--" or ssid in seen:
                 continue
             seen.add(ssid)
-            sig  = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
-            sec  = parts[2].strip()              if len(parts) > 2 else ""
+            sig = int(parts[1]) if parts[1].isdigit() else 0
+            sec = parts[2].strip()
             nets.append({"ssid": ssid, "signal": sig,
                          "secure": bool(sec and sec != "--")})
         return jsonify(sorted(nets, key=lambda x: -x["signal"]))

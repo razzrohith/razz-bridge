@@ -314,6 +314,11 @@
       '.rwp-net.active{background:#0d1e30;color:#4a9eff;}',
       '.rwp-net-ssid{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
       '.rwp-net-sig{font-size:10px;color:#383838;flex-shrink:0;}',
+      '.rwp-net-con{',
+        'font-size:10px;color:#1e3a5a;flex-shrink:0;cursor:pointer;',
+        'padding:2px 5px;border-radius:4px;transition:color .15s;',
+      '}',
+      '.rwp-net-con:hover{color:#4a9eff;}',
       '.rwp-net-del{',
         'font-size:11px;color:#2a2a2a;flex-shrink:0;cursor:pointer;',
         'padding:2px 4px;border-radius:4px;transition:color .15s;',
@@ -456,8 +461,12 @@
       }
       el.className = '';
       el.innerHTML = nets.map(function (n) {
+        var connectBtn = n.active ? '' :
+          '<span class="rwp-net-con" onclick="rwpConnect(\'' + escAttr(n.name) + '\')" ' +
+            'role="button" aria-label="Connect to ' + esc(n.name) + '" title="Connect now">▶</span>';
         return '<div class="rwp-net' + (n.active ? ' active' : '') + '">' +
           '<span class="rwp-net-ssid">' + esc(n.name) + (n.active ? ' ✓' : '') + '</span>' +
+          connectBtn +
           '<span class="rwp-net-del" onclick="rwpRemove(\'' + escAttr(n.name) + '\')" ' +
             'role="button" aria-label="Remove ' + esc(n.name) + '" title="Remove">✕</span>' +
           '</div>';
@@ -530,6 +539,22 @@
     });
   }
 
+  /* ── Connect to saved network now ───────────────────────────── */
+  function rwpConnect(name) {
+    var st = document.getElementById('rwp-add-st');
+    rwpSt(st, 'Connecting to ' + name + '…', 'wa');
+    wfetch('/api/wifi/connect', { name: name }).then(function (r) {
+      if (r.ok) {
+        rwpSt(st, '✓ Connected to ' + name, 'ok');
+        setTimeout(function () { loadStatus(); loadSaved(); rwpSt(st, '', ''); }, 2000);
+      } else {
+        rwpSt(st, '✗ ' + (r.error || 'Connect failed'), 'er');
+      }
+    }).catch(function () {
+      rwpSt(st, '✗ Network error', 'er');
+    });
+  }
+
   /* ── Remove network ──────────────────────────────────────────── */
   function rwpRemove(name) {
     if (!confirm('Remove "' + name + '" from saved networks?')) return;
@@ -559,10 +584,11 @@
   }
 
   /* make rwpSelect/rwpScan/rwpRemove/rwpAdd available from inline onclick */
-  window.rwpScan   = rwpScan;
-  window.rwpSelect = rwpSelect;
-  window.rwpRemove = rwpRemove;
-  window.rwpAdd    = rwpAdd;
+  window.rwpScan    = rwpScan;
+  window.rwpSelect  = rwpSelect;
+  window.rwpRemove  = rwpRemove;
+  window.rwpAdd     = rwpAdd;
+  window.rwpConnect = rwpConnect;
 
   /* ── Mount ───────────────────────────────────────────────────── */
   if (document.readyState === 'loading') {

@@ -45,13 +45,16 @@ def scan_networks():
                  "device", "wifi", "list", "--rescan", "yes", timeout=20)
         nets, seen = [], set()
         for line in r.stdout.splitlines():
-            parts = line.split(":")
-            ssid  = parts[0].strip() if parts else ""
+            # rsplit from right so SSIDs containing ':' don't shift SIGNAL/SECURITY fields
+            parts = line.rsplit(":", 2)
+            if len(parts) < 3:
+                continue
+            ssid = parts[0].strip()
             if not ssid or ssid == "--" or ssid in seen:
                 continue
             seen.add(ssid)
-            sig  = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
-            sec  = parts[2].strip() if len(parts) > 2 else ""
+            sig  = int(parts[1]) if parts[1].isdigit() else 0
+            sec  = parts[2].strip()
             nets.append({"ssid": ssid, "signal": sig,
                          "secure": bool(sec and sec != "--")})
         return sorted(nets, key=lambda x: -x["signal"])
@@ -430,14 +433,11 @@ def connect():
     if not ok:
         return jsonify({"ok": False, "error": msg})
 
-    # Tailscale
+    # Tailscale — try now; write key either way so provision script can retry on failure
     ts_ip = ""
     if tskey:
+        Path(TS_TMP).write_text(tskey)
         ts_ip = ts_connect(tskey)
-        if ts_ip:
-            Path(TS_TMP).write_text(tskey)     # provision script reads this too
-        else:
-            Path(TS_TMP).write_text(tskey)     # let provision script retry
 
     # Mark provisioning done (provision script polls for this)
     serial = _serial()
@@ -450,5 +450,4 @@ def connect():
 def _not_found(_):
     return redirect("/", 302)
 
-if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
