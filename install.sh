@@ -131,13 +131,13 @@ command -v dnsmasq >/dev/null 2>&1 || apt-get install -y -q dnsmasq
 
 # ── 7. Stealth dashboard ─────────────────────────────────────
 log "Installing stealth dashboard..."
-curl -fsSL "$REPO_RAW/src/stealth-dashboard.py" \
+curl -fsSL "$REPO_RAW/src/dashboard/stealth-dashboard.py" \
     | sed -e "s/__ETH0_MAC__/${ETH0_MAC}/g" \
           -e "s/__WLAN0_MAC__/${WLAN0_MAC}/g" \
     > /usr/local/bin/stealth-dashboard.py
 chmod +x /usr/local/bin/stealth-dashboard.py
 
-curl -fsSL "$REPO_RAW/src/stealth-dashboard.service" \
+curl -fsSL "$REPO_RAW/src/dashboard/stealth-dashboard.service" \
     > /etc/systemd/system/stealth-dashboard.service
 systemctl daemon-reload
 systemctl enable stealth-dashboard
@@ -146,9 +146,9 @@ log "stealth-dashboard: $(systemctl is-active stealth-dashboard)"
 
 # ── 7b. First-boot WiFi provisioning system ──────────────────
 log "Installing first-boot provisioning system..."
-curl -fsSL "$REPO_RAW/src/razz-provision.sh"  -o /usr/local/bin/razz-provision.sh
-curl -fsSL "$REPO_RAW/src/razz-setup-ui.py"   -o /usr/local/bin/razz-setup-ui.py
-curl -fsSL "$REPO_RAW/src/razz-provision.service" \
+curl -fsSL "$REPO_RAW/src/provision/razz-provision.sh"  -o /usr/local/bin/razz-provision.sh
+curl -fsSL "$REPO_RAW/src/provision/razz-setup-ui.py"   -o /usr/local/bin/razz-setup-ui.py
+curl -fsSL "$REPO_RAW/src/provision/razz-provision.service" \
     -o /etc/systemd/system/razz-provision.service
 chmod +x /usr/local/bin/razz-provision.sh
 chmod +x /usr/local/bin/razz-setup-ui.py
@@ -335,8 +335,8 @@ fi
 
 # ── 9. Razz theme files ───────────────────────────────────────
 log "Installing theme..."
-curl -fsSL "$REPO_RAW/src/razz-theme.css" -o /opt/razz-theme.css
-curl -fsSL "$REPO_RAW/src/razz-brand.js"  -o /opt/razz-brand.js
+curl -fsSL "$REPO_RAW/src/theme/razz-theme.css" -o /opt/razz-theme.css
+curl -fsSL "$REPO_RAW/src/theme/razz-brand.js"  -o /opt/razz-brand.js
 
 # ── 10. nginx patch ───────────────────────────────────────────
 log "Patching nginx config..."
