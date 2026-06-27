@@ -1,0 +1,23 @@
+[Unit]
+Description=Razz Bridge first-boot WiFi provisioning
+Documentation=https://github.com/razzrohith/razz-bridge
+# Must run after NM is up; does not need internet
+After=NetworkManager.service
+Wants=NetworkManager.service
+# Allow TinyPilot and stealth dashboard to start while we wait for WiFi
+# (they'll work fine on LAN even if WiFi isn't up yet)
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/razz-provision.sh
+# Keep running until provisioning is done (script self-exits on completion)
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+# Generous timeout — AP mode waits indefinitely for user
+TimeoutStartSec=infinity
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

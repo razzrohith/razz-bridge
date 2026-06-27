@@ -61,8 +61,9 @@ orig = c
 # Remove rate-limit zone line at the top
 c = re.sub(r'^limit_req_zone[^\n]*\n\n?', '', c, flags=re.M)
 
-# Remove /stealth/ location block
+# Remove /stealth/ and /api/wifi/ location blocks
 c = re.sub(r'\s*location\s+/stealth/\s*\{[^}]+\}', '', c)
+c = re.sub(r'\s*location\s+/api/wifi/\s*\{[^}]+\}', '', c)
 
 # Remove /razz-theme.css and /razz-brand.js location blocks
 c = re.sub(r'\s*location\s*=\s*/razz-theme\.css\s*\{[^}]+\}', '', c)
@@ -96,6 +97,19 @@ rm -f /opt/razz-theme.css /opt/razz-brand.js
 # ── 4. Remove DuckDNS cron ───────────────────────────────────
 log "Removing DuckDNS cron..."
 rm -f /etc/cron.d/razz-duckdns
+
+# ── 4b. Remove provisioning system ───────────────────────────
+log "Removing first-boot provisioning system..."
+systemctl stop    razz-provision 2>/dev/null || true
+systemctl disable razz-provision 2>/dev/null || true
+rm -f /etc/systemd/system/razz-provision.service
+rm -f /usr/local/bin/razz-provision.sh
+rm -f /usr/local/bin/razz-setup-ui.py
+rm -f /etc/razz-provisioned
+rm -f /boot/razz-wifi.txt.example
+rm -f /var/log/razz-provision.log
+rm -f /etc/NetworkManager/dnsmasq-shared.d/razz-captive.conf
+systemctl daemon-reload
 
 # ── 5. Remove mDNS alt-hostname service ──────────────────────
 log "Removing alt-mDNS service..."
@@ -173,17 +187,4 @@ echo "Port 22" >> "$SSHD"
 systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
 log "  SSH restored to port 22"
 
-# ── Done ─────────────────────────────────────────────────────
-echo ""
-echo -e "${G}==> Razz Bridge removed.${N}"
-echo ""
-echo "  TinyPilot is still installed and running."
-echo "  Visit https://<your-pi-ip>/ or https://tinypilot.local/"
-echo ""
-echo "  Notes:"
-echo "   · If you changed the hostname with RAZZ_HOST, run:"
-echo "       sudo hostnamectl set-hostname tinypilot"
-echo "   · MAC address changes made via the panel may persist until reboot."
-echo "   · The self-signed SSL cert was not removed (TinyPilot uses it too)."
-echo "   · Run 'sudo reboot' to ensure all USB gadget changes take effect."
-echo ""
+# ── Done ───────────────────

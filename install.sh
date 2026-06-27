@@ -123,9 +123,11 @@ systemctl enable razz-mdns-alt 2>/dev/null || true
 systemctl restart razz-mdns-alt 2>/dev/null || true
 log "Secondary mDNS: ${RAZZ_HOST2}.local"
 
-# ── 6. Flask + bcrypt ────────────────────────────────────────
+# ── 6. Flask + bcrypt + dnsmasq (for AP captive portal) ─────
 python3 -c "import flask"  2>/dev/null || apt-get install -y -q python3-flask
 python3 -c "import bcrypt" 2>/dev/null || apt-get install -y -q python3-bcrypt
+# dnsmasq: NetworkManager uses it internally for AP shared connections
+command -v dnsmasq >/dev/null 2>&1 || apt-get install -y -q dnsmasq
 
 # ── 7. Stealth dashboard ─────────────────────────────────────
 log "Installing stealth dashboard..."
@@ -141,6 +143,37 @@ systemctl daemon-reload
 systemctl enable stealth-dashboard
 systemctl restart stealth-dashboard
 log "stealth-dashboard: $(systemctl is-active stealth-dashboard)"
+
+# ── 7b. First-boot WiFi provisioning system ──────────────────
+log "Installing first-boot provisioning system..."
+curl -fsSL "$REPO_RAW/src/razz-provision.sh"  -o /usr/local/bin/razz-provision.sh
+curl -fsSL "$REPO_RAW/src/razz-setup-ui.py"   -o /usr/local/bin/razz-setup-ui.py
+curl -fsSL "$REPO_RAW/src/razz-provision.service" \
+    -o /etc/systemd/system/razz-provision.service
+chmod +x /usr/local/bin/razz-provision.sh
+chmod +x /usr/local/bin/razz-setup-ui.py
+systemctl daemon-reload
+systemctl enable razz-provision 2>/dev/null || true
+# Note: DO NOT start the service now — it runs on next boot.
+# It will auto-skip if WiFi is already connected (e.g., during dev setup).
+log "  razz-provision.service enabled (runs on next boot)"
+
+# Create razz-wifi.txt template on boot partition for documentation
+# (delete this file if you don't want to pre-seed WiFi on new images)
+WIFI_TMPL="/boot/razz-wifi.txt.example"
+if [[ ! -f "$WIFI_TMPL" ]]; then
+cat > "$WIFI_TMPL" << 'WIFIEOF'
+# Razz Bridge WiFi pre-seed file
+# Rename this file to razz-wifi.txt (remove .example) and fill in your credentials.
+# Place on the boot partition (first FAT32 partition of the SD card).
+# The Pi will read this on first boot, connect to WiFi, and delete the file.
+#
+SSID=YourNetworkName
+PASSWORD=YourWiFiPassword
+TAILSCALE_KEY=tskey-auth-xxxxxxxxxxxxxxxxx
+WIFIEOF
+    log "  razz-wifi.txt.example written to /boot/"
+fi
 
 # mac-spoof.sh placeholder (populated by dashboard when MAC spoofing is used)
 if [[ ! -f /usr/local/bin/mac-spoof.sh ]]; then
@@ -254,7 +287,6 @@ try:
 except Exception:
     cfg = {}
 if not cfg.get("usb", {}).get("enabled"):
-    cfg["usb"] = {
         "enabled":      True,
         "manufacturer": os.environ["_MFR"],
         "product":      os.environ["_PROD"],
@@ -292,4 +324,291 @@ log "SSH: fingerprint hidden, port --> $RAZZ_SSH_PORT"
 DHCPCD="/etc/dhcpcd.conf"
 if [[ -f "$DHCPCD" ]]; then
     # Remove any existing hostname / vendorclassid lines
-    
+    sed -i '/^\(hostname\|vendorclassid\|clientid\)/d' "$DHCPCD"
+    # nohook hostname = don't send hostname in DHCP requests
+    echo "nohook hostname"  >> "$DHCPCD"
+    # Empty vendorclassid = don't reveal "dhcpcd:Linux:armv8..."
+    echo 'vendorclassid ""' >> "$DHCPCD"
+    log "DHCP: hostname + vendor class suppressed"
+    systemctl restart dhcpcd 2>/dev/null || true
+fi
+
+# ── 9. Razz theme files ───────────────────────────────────────
+log "Installing theme..."
+curl -fsSL "$REPO_RAW/src/razz-theme.css" -o /opt/razz-theme.css
+curl -fsSL "$REPO_RAW/src/razz-brand.js"  -o /opt/razz-brand.js
+
+# ── 10. nginx patch ───────────────────────────────────────────
+log "Patching nginx config..."
+_RAZZ_HOST="$RAZZ_HOST" python3 << 'PYEOF'
+import re, sys, os
+rh   = os.environ["_RAZZ_HOST"]
+path = "/etc/nginx/conf.d/tinypilot.conf"
+
+try:
+    c = open(path).read()
+except FileNotFoundError:
+    print("  [warn] tinypilot.conf not found -- nginx patch skipped")
+    sys.exit(0)
+
+changed = False
+
+# 10a. server_tokens off
+if "server_tokens" not in c:
+    c = re.sub(r"(server\s*\{)", r"\1\n    server_tokens off;", c, count=1)
+    changed = True
+
+# 10b. Add RAZZ_HOST.local to server_name
+rh_local = rh + ".local"
+if rh_local not in c:
+    def add_hostname(m):
+        names = m.group(2)
+        if rh_local in names:
+            return m.group(0)
+        stripped = names.strip()
+        if "tinypilot" in stripped or stripped == "_":
+            return m.group(1) + names.rstrip() + " " + rh_local + m.group(3)
+        return m.group(0)
+    c, n = re.subn(r"(server_name\s+)([^;]+)(;)", add_hostname, c)
+    if n:
+        print(f"  server_name: added {rh_local}")
+        changed = True
+
+# 10c. sub_filter injection in location / (injects CSS+JS into every HTML response)
+if "razz-theme.css" not in c:
+    injected = [False]
+    def inject_sub(m):
+        block = m.group(0)
+        if "proxy_pass http://tinypilot" not in block:
+            return block
+        if "sub_filter" in block:
+            return block
+        old = "proxy_pass http://tinypilot;"
+        ins = (
+            "\n        proxy_set_header Accept-Encoding \"\";"
+            "\n        sub_filter_once on;"
+            "\n        sub_filter_types text/html;"
+            "\n        sub_filter '</head>'"
+            " '<link rel=\"stylesheet\" href=\"/razz-theme.css\">"
+            "<script src=\"/razz-brand.js\"></script></head>';"
+        )
+        injected[0] = True
+        return block.replace(old, old + ins, 1)
+    c = re.sub(r"location\s*/\s*\{[^}]+\}", inject_sub, c)
+    if injected[0]:
+        print("  sub_filter injected into location /")
+        changed = True
+    elif "razz-theme.css" not in c:
+        print("  [WARN] location / block not matched -- check that proxy_pass http://tinypilot; exists")
+
+# 10d. Rate-limit zone for stealth panel (5 req/s per IP, burst 12)
+if "razz_stealth_zone" not in c:
+    c = "limit_req_zone $binary_remote_addr zone=razz_stealth_zone:4m rate=5r/s;\n\n" + c
+    print("  rate-limit zone added")
+    changed = True
+
+# 10e. Stealth panel, WiFi API, and static asset location blocks
+if "/stealth/" not in c:
+    blk = """
+    location /stealth/ {
+        limit_req zone=razz_stealth_zone burst=12 nodelay;
+        limit_req_status 429;
+        proxy_pass http://127.0.0.1:7777/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 60s;
+    }
+    location /api/wifi/ {
+        # WiFi management API — no auth, accessible from main KVM page
+        proxy_pass http://127.0.0.1:7777/api/wifi/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 30s;
+    }
+    location = /razz-theme.css {
+        alias /opt/razz-theme.css;
+        add_header Cache-Control "no-cache, no-store";
+    }
+    location = /razz-brand.js {
+        alias /opt/razz-brand.js;
+        add_header Cache-Control "no-cache, no-store";
+    }
+"""
+    idx = c.rfind("}")
+    c = c[:idx] + blk + "\n}"
+    print("  location blocks added")
+    changed = True
+elif "/api/wifi/" not in c:
+    # Already have /stealth/ but missing /api/wifi/ — add it
+    blk = """
+    location /api/wifi/ {
+        proxy_pass http://127.0.0.1:7777/api/wifi/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 30s;
+    }
+"""
+    idx = c.rfind("}")
+    c = c[:idx] + blk + "\n}"
+    print("  /api/wifi/ location added")
+    changed = True
+
+if changed:
+    open(path, "w").write(c)
+    print("  tinypilot.conf saved")
+else:
+    print("  nginx conf already up to date")
+PYEOF
+
+# ── 11. SSL cert for RAZZ_HOST.local ─────────────────────────
+CERT="/etc/ssl/certs/tinypilot-nginx.crt"
+KEY="/etc/ssl/private/tinypilot-nginx.key"
+if [[ -f "$CERT" ]] && openssl x509 -in "$CERT" -text 2>/dev/null | grep -q "${RAZZ_HOST}\.local"; then
+    log "SSL cert already includes ${RAZZ_HOST}.local -- skipping"
+else
+    log "Generating SSL cert for ${RAZZ_HOST}.local..."
+    [[ -f "$CERT" ]] && cp "$CERT" "${CERT}.bak"
+    [[ -f "$KEY"  ]] && cp "$KEY"  "${KEY}.bak"
+    openssl req -x509 -newkey rsa:2048 \
+        -keyout /tmp/razz.key -out /tmp/razz.crt \
+        -days 3650 -nodes \
+        -subj "/CN=${RAZZ_HOST}.local" \
+        -addext "subjectAltName=DNS:${RAZZ_HOST}.local,DNS:tinypilot,DNS:localhost,IP:127.0.0.1" \
+        2>/dev/null
+    cp /tmp/razz.crt "$CERT"
+    cp /tmp/razz.key "$KEY"
+    rm -f /tmp/razz.crt /tmp/razz.key
+fi
+
+# ── 12. Test and reload nginx ─────────────────────────────────
+if nginx -t 2>/tmp/razz-nginx-test.out; then
+    systemctl reload nginx
+    log "nginx reloaded OK"
+else
+    cat /tmp/razz-nginx-test.out
+    die "nginx config test failed -- see errors above"
+fi
+
+# ── 13. Tailscale ────────────────────────────────────────────
+if ! command -v tailscale >/dev/null 2>&1; then
+    log "Installing Tailscale..."
+    curl -fsSL https://tailscale.com/install.sh | bash - 2>/dev/null \
+        || warn "Tailscale install failed -- run manually later"
+    systemctl enable tailscaled 2>/dev/null || true
+    systemctl start  tailscaled 2>/dev/null || true
+else
+    log "Tailscale already installed: $(tailscale version 2>/dev/null | head -1)"
+fi
+
+# Auto-authenticate if TAILSCALE_AUTHKEY is set
+#   Usage:  TAILSCALE_AUTHKEY=tskey-auth-xxx curl ... | sudo bash
+if [[ -n "${TAILSCALE_AUTHKEY:-}" ]]; then
+    log "Tailscale: authenticating with provided auth key..."
+    tailscale up --authkey="$TAILSCALE_AUTHKEY" --accept-routes 2>/dev/null \
+        && log "Tailscale: connected -- IP: $(tailscale ip -4 2>/dev/null || echo '?')" \
+        || warn "Tailscale: auth failed -- check key and try 'sudo tailscale up' manually"
+else
+    log "Tailscale: no TAILSCALE_AUTHKEY set -- run 'sudo tailscale up' to authenticate"
+fi
+
+# ── 14. Log files ─────────────────────────────────────────────
+log "Initializing log files..."
+touch /var/log/razz-auth.log /var/log/razz-sessions.log 2>/dev/null || true
+chmod 640 /var/log/razz-auth.log /var/log/razz-sessions.log 2>/dev/null || true
+# Progressive login delay is handled in-process by stealth-dashboard.py.
+# No external blocking is used — the panel never locks anyone out.
+
+# ── 14b. MAC boot-persistence service (managed by stealth panel) ─────────────
+# The service is empty on first install; the panel writes entries into
+# stealth-config.json and regenerates this file whenever a MAC is applied.
+if [[ ! -f /etc/systemd/system/razz-mac.service ]]; then
+cat > /etc/systemd/system/razz-mac.service << 'SVCEOF'
+[Unit]
+Description=Razz Bridge persistent MAC addresses
+Before=network.target dhcpcd.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+    systemctl daemon-reload
+    systemctl enable razz-mac 2>/dev/null || true
+    log "razz-mac.service registered (will populate when MAC is applied from panel)"
+fi
+
+# ── 15. Firewall — default-deny inbound, allow only what's needed ─────────────
+log "Configuring iptables firewall..."
+apt-get install -y -q iptables-persistent 2>/dev/null || true
+
+# Flush + start fresh
+iptables -F; iptables -X; iptables -Z
+
+# Default policies
+iptables -P INPUT   DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT  ACCEPT    # outbound unrestricted
+
+# Loopback (required for Flask + local services)
+iptables -A INPUT -i lo -j ACCEPT
+
+# Established / related connections
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# HTTP + HTTPS (TinyPilot KVM UI + stealth panel)
+iptables -A INPUT -p tcp --dport 80  -j ACCEPT
+iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+
+# SSH on custom port
+iptables -A INPUT -p tcp --dport "${RAZZ_SSH_PORT}" -j ACCEPT
+
+# Tailscale (WireGuard UDP + tailscale0 interface)
+iptables -A INPUT -i tailscale0 -j ACCEPT
+iptables -A INPUT -p udp --dport 41641 -j ACCEPT
+
+# mDNS (avahi — needed for .local hostname)
+iptables -A INPUT -p udp --dport 5353 -j ACCEPT
+
+# ICMP ping (useful for diagnostics; drop to block if desired)
+iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
+
+# SSDP/UPnP discovery — explicitly drop (already caught by default DROP, but explicit)
+iptables -A INPUT  -p udp --dport 1900 -j DROP
+iptables -A OUTPUT -p udp --dport 1900 -j DROP
+
+# Persist across reboots
+mkdir -p /etc/iptables
+iptables-save > /etc/iptables/rules.v4
+log "Firewall applied (default-deny; allowed: 80, 443, SSH:${RAZZ_SSH_PORT}, Tailscale, mDNS)"
+
+# ── Done ─────────────────────────────────────────────────────
+echo ""
+echo -e "${G}==> Setup complete!${N}"
+echo ""
+echo "  Main:          https://${RAZZ_HOST}.local/"
+echo "  Panel:         https://${RAZZ_HOST}.local/stealth/"
+echo "  Alt hostname:  https://${RAZZ_HOST}-alt.local/  (fallback)"
+echo ""
+echo -e "  ${Y}Panel password: lol${N}"
+echo "  To change it, contact the developer."
+echo ""
+echo "  SSH:       ssh <user>@${RAZZ_HOST}.local -p ${RAZZ_SSH_PORT}"
+if [[ -z "${TAILSCALE_AUTHKEY:-}" ]]; then
+echo "  Tailscale: run 'sudo tailscale up' to authenticate remote access"
+else
+echo "  Tailscale: authenticated -- IP: $(tailscale ip -4 2>/dev/null || echo '?')"
+fi
+echo ""
+echo "  First visit: click Advanced --> Proceed past the self-signed cert warning."
+echo "  Windows:     install Bonjour (via iTunes) if .local does not resolve."
+echo ""
+echo -e "  ${Y}First-boot WiFi setup:${N}"
+echo "   · On a fresh image (no saved WiFi), the Pi starts a 'Bridge-Setup' AP."
+echo "   · Connect your phone/laptop to 'Bridge-Setup' (password: bridge1234)"
+echo "   · Open any browser page — the setup page appears automatically."
+echo "   · Or pre-seed: copy /boot/razz-wifi.txt.example to /boot/razz-wifi.txt"
+echo "     and fill in your network credentials before first boot."
+echo ""

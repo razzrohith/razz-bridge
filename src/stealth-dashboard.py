@@ -579,5 +579,861 @@ hr{border:none;border-top:0.5px solid var(--br);margin:10px 0}
       <div class="field" style="flex:1;min-width:110px">
         <label class="fl" for="u-mfr">Manufacturer</label>
         <input type="text" id="u-mfr" aria-describedby="u-help" style="width:100%">
+      <div class="field" style="flex:1;min-width:110px">
+        <label class="fl" for="u-prod">Product name</label>
+        <input type="text" id="u-prod" style="width:100%">
       </div>
-      <div class="field" style="flex:1;
+    </div>
+    <div class="frow" style="margin-bottom:7px">
+      <div class="field" style="flex:1;min-width:70px">
+        <label class="fl" for="u-vid">VID</label>
+        <input type="text" id="u-vid" placeholder="0x046d" style="width:100%">
+      </div>
+      <div class="field" style="flex:1;min-width:70px">
+        <label class="fl" for="u-pid">PID</label>
+        <input type="text" id="u-pid" placeholder="0xc31c" style="width:100%">
+      </div>
+      <div class="field" style="flex:1;min-width:65px">
+        <label class="fl" for="u-bcdusb">bcdUSB</label>
+        <input type="text" id="u-bcdusb" value="0x0200" readonly
+               aria-readonly="true" title="USB spec version — 0x0200 = USB 2.0 (matches K120)"
+               style="width:100%;opacity:.5;cursor:default">
+      </div>
+      <div class="field" style="flex:1;min-width:90px">
+        <label class="fl" for="u-ser">Serial</label>
+        <input type="text" id="u-ser" style="width:100%">
+      </div>
+    </div>
+    <span id="u-help" class="fd" style="display:block;margin-bottom:8px">
+      Your computer sees a brief USB reconnect when identity is applied.
+    </span>
+    <div class="frow" style="flex-wrap:wrap;gap:6px">
+      <button class="btn btn-p" onclick="applyId()"
+              aria-label="Apply custom USB identity fields">Apply identity</button>
+      <button class="btn" onclick="randSerial()"
+              aria-label="Generate a new random serial number">Random serial</button>
+      <button class="btn" id="safe-btn" onclick="safeMode()"
+              aria-label="Toggle safe mode — temporarily restores original identifiers">Safe mode</button>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══ Network ═════════════════════════════════════════════════════════════ -->
+<section class="card" aria-labelledby="h-net">
+  <div class="ch">
+    <h2 id="h-net">Network identity</h2>
+    <span class="cd">MAC address &amp; remote access</span>
+  </div>
+  <div class="cb">
+
+    <div class="field">
+      <span class="fl" id="h-mac">MAC address</span>
+      <span class="fd">Changes the hardware address this device reports on the network.</span>
+      <div class="frow" style="margin-top:6px">
+        <select id="net-if" aria-labelledby="h-mac" style="width:78px">
+          <option>eth0</option><option>wlan0</option>
+        </select>
+        <input type="text" id="net-mac" aria-label="MAC address value"
+               placeholder="00:1a:2b:xx:xx:xx" style="flex:1">
+        <button class="btn" onclick="applyMac()" aria-label="Apply MAC address">Apply</button>
+        <button class="btn" onclick="randMac()" aria-label="Generate random MAC">Random</button>
+      </div>
+      <span class="fd">Applied immediately and persists across reboots via systemd service.</span>
+      <div id="mac-persist-st" style="font-size:11px;color:var(--t3);margin-top:4px"
+           role="status" aria-live="polite"></div>
+    </div>
+
+    <hr>
+
+    <div class="field">
+      <span class="fl" id="h-ts">Tailscale — encrypted remote-access tunnel</span>
+      <div id="ts-st" role="status" aria-live="polite" aria-labelledby="h-ts"
+           style="font-size:12px;color:var(--t3);margin:4px 0 6px">Loading…</div>
+      <button class="btn" onclick="tsUp()"
+              aria-label="Reconnect Tailscale tunnel">Reconnect</button>
+    </div>
+
+    <hr>
+
+    <div class="field">
+      <span class="fl" id="h-fn">Tailscale Funnel — public internet access</span>
+      <span class="fd">Exposes the KVM publicly with a real HTTPS cert. Requires Tailscale ≥ 1.34 and Funnel enabled in your tailnet admin console.</span>
+      <div id="fn-st" role="status" aria-live="polite"
+           style="font-size:12px;color:var(--t3);margin:4px 0 6px" aria-labelledby="h-fn">Loading…</div>
+      <div class="frow" style="flex-wrap:wrap;gap:6px">
+        <button class="btn btn-p" onclick="funnelOn()"
+                aria-label="Enable Tailscale Funnel on port 443">Enable Funnel</button>
+        <button class="btn btn-d" onclick="funnelOff()"
+                aria-label="Disable Tailscale Funnel">Disable</button>
+      </div>
+    </div>
+
+    <hr>
+
+    <div class="field">
+      <span class="fl" id="h-ddns">DuckDNS — free public hostname for remote access</span>
+      <span class="fd">Points a .duckdns.org hostname at your external IP. Updates automatically every 5 minutes once saved.</span>
+      <div class="frow" style="margin-top:6px;flex-wrap:wrap">
+        <input type="text" id="ddns-h" placeholder="myhostname"
+               aria-label="DuckDNS hostname (without .duckdns.org)" style="flex:1;min-width:100px">
+        <input type="text" id="ddns-t" placeholder="token"
+               aria-label="DuckDNS token" style="flex:1;min-width:110px">
+        <button class="btn btn-p" onclick="applyDdns()"
+                aria-label="Save DuckDNS settings and update now">Apply</button>
+      </div>
+      <div id="ddns-st" style="margin-top:4px;font-size:11px;color:var(--t3)"
+           role="status" aria-live="polite"></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══ KVM Activity ═════════════════════════════════════════════════════════ -->
+<section class="card" aria-labelledby="h-kvm">
+  <div class="ch">
+    <h2 id="h-kvm">KVM activity</h2>
+    <span class="cd">Who last accessed the remote-control interface</span>
+  </div>
+  <div class="cb">
+    <div id="kvm-last" style="font-size:12px;color:var(--t3);margin-bottom:10px"
+         role="status" aria-live="polite">Checking…</div>
+    <span class="fl">Session log (recent)</span>
+    <div class="log" id="sess-log"
+         role="log" aria-label="Session log" aria-live="polite"></div>
+  </div>
+</section>
+
+<!-- ══ System ═══════════════════════════════════════════════════════════════ -->
+<section class="card" aria-labelledby="h-sys">
+  <div class="ch">
+    <h2 id="h-sys">System</h2>
+    <span class="cd">Device health &amp; controls</span>
+  </div>
+  <div class="cb">
+    <div id="sys-inf" style="font-size:12px;color:var(--t3);margin-bottom:10px"
+         role="status" aria-live="polite">Loading…</div>
+    <button class="btn btn-d" onclick="doReboot()"
+            aria-label="Reboot the Raspberry Pi — interrupts active KVM session">Reboot device</button>
+  </div>
+</section>
+
+<!-- ══ Config Backup ════════════════════════════════════════════════════════ -->
+<section class="card full" aria-labelledby="h-bk">
+  <div class="ch">
+    <h2 id="h-bk">Config backup &amp; restore</h2>
+    <span class="cd">Save settings before reflashing, restore after reinstall</span>
+  </div>
+  <div class="cb">
+    <span class="fd" style="display:block;margin-bottom:10px">
+      Backup saves all USB, MAC, and DuckDNS settings as a JSON file.
+      Upload it after a fresh install to restore everything in one step.
+    </span>
+    <div class="frow" style="flex-wrap:wrap;gap:7px">
+      <button class="btn" onclick="dlBackup()"
+              aria-label="Download current config as JSON file">Download backup</button>
+      <label class="btn" style="cursor:pointer">
+        Upload &amp; restore
+        <input type="file" accept=".json" style="display:none"
+               aria-label="Select backup JSON file to restore"
+               onchange="ulRestore(this)">
+      </label>
+    </div>
+  </div>
+</section>
+
+<!-- ══ Log Viewer ═══════════════════════════════════════════════════════════ -->
+<section class="card full" aria-labelledby="h-log">
+  <div class="ch">
+    <h2 id="h-log">Logs</h2>
+    <span class="cd">View system logs without SSH — last 50 lines</span>
+  </div>
+  <div class="cb">
+    <div class="frow" style="margin-bottom:8px">
+      <label for="log-src" class="fl" style="align-self:center;margin:0;margin-right:2px">Source</label>
+      <select id="log-src" aria-label="Log source to display">
+        <option value="auth">Auth log</option>
+        <option value="kvm">Session log</option>
+        <option value="nginx">Nginx access</option>
+        <option value="nginx-err">Nginx errors</option>
+        <option value="system">System log</option>
+      </select>
+      <button class="btn" onclick="refreshLogs()"
+              aria-label="Refresh log output">Refresh</button>
+    </div>
+    <div class="log" id="log-view"
+         role="log" aria-live="polite" aria-label="Log output"></div>
+  </div>
+</section>
+
+</main>
+
+<!-- idle progress bar -->
+<div class="ibar" role="progressbar"
+     aria-label="Session idle timer" aria-valuemin="0" aria-valuemax="100">
+  <div class="ifill" id="ifill" style="width:100%"></div>
+</div>
+
+<div id="toast" role="alert" aria-live="assertive" aria-atomic="true"></div>
+
+<script>
+const CSRF  = document.querySelector('meta[name="csrf-token"]').content;
+const PROFS = {{ profiles|tojson }};
+let selP = 0;
+
+/* ── API helper ─────────────────────────────────────────────── */
+async function api(url, body) {
+  const o = {headers: {'X-CSRF-Token': CSRF}};
+  if (body !== undefined) {
+    o.method = 'POST';
+    o.headers['Content-Type'] = 'application/json';
+    o.body = JSON.stringify(body);
+  }
+  try { return (await fetch(url, o)).json(); }
+  catch(e) { return {ok:false, error:String(e)}; }
+}
+
+/* ── Toast ──────────────────────────────────────────────────── */
+function toast(msg, type='ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + type;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.className = ''; }, 3500);
+}
+
+/* ── Idle timer — 28 min countdown, auto-lock at 30 ─────────── */
+const IDLE_MS = 28 * 60 * 1000;
+let iLast = Date.now();
+['mousemove','keydown','click','touchstart'].forEach(
+  ev => document.addEventListener(ev, () => { iLast = Date.now(); }, {passive:true}));
+setInterval(() => {
+  const elapsed = Date.now() - iLast;
+  const pct = Math.max(0, 100 - elapsed / IDLE_MS * 100);
+  const f = document.getElementById('ifill');
+  if (f) {
+    f.style.width = pct + '%';
+    f.parentElement.setAttribute('aria-valuenow', Math.round(pct));
+  }
+  if (elapsed > IDLE_MS + 120000) lock();  // lock 2 min after countdown hits 0
+}, 1000);
+
+/* ── Lock ───────────────────────────────────────────────────── */
+async function lock() {
+  await api('/stealth/api/lock', {});
+  location.href = '/stealth/login';
+}
+
+/* ── Profile pills ──────────────────────────────────────────── */
+function buildPills() {
+  const c = document.getElementById('pills');
+  c.innerHTML = '';
+  PROFS.forEach((p, i) => {
+    const b = document.createElement('button');
+    b.className = 'pill' + (i === selP ? ' on' : '');
+    b.setAttribute('aria-pressed', i === selP ? 'true' : 'false');
+    b.textContent = p.name;
+    b.onclick = () => {
+      selP = i;
+      buildPills();
+      document.getElementById('u-mfr').value  = p.mfr;
+      document.getElementById('u-prod').value = p.prod;
+      document.getElementById('u-vid').value  = p.vid;
+      document.getElementById('u-pid').value  = p.pid;
+    };
+    c.appendChild(b);
+  });
+}
+
+async function applyPreset() {
+  const r = await api('/stealth/api/apply', {action:'profile', idx:selP});
+  toast(r.ok ? 'Preset applied: '+PROFS[selP].name : (r.error||'Error'),
+        r.ok ? 'ok' : 'er');
+  if (r.ok) loadStatus();
+}
+
+async function applyId() {
+  const r = await api('/stealth/api/apply', {
+    action:'identity',
+    mfr:  document.getElementById('u-mfr').value,
+    prod: document.getElementById('u-prod').value,
+    ser:  document.getElementById('u-ser').value,
+    vid:  document.getElementById('u-vid').value,
+    pid:  document.getElementById('u-pid').value,
+  });
+  toast(r.ok ? 'Identity applied' : (r.error||'Error'), r.ok?'ok':'er');
+  if (r.ok) loadStatus();
+}
+
+async function randSerial() {
+  const r = await api('/stealth/api/randomize');
+  if (r.serial) {
+    document.getElementById('u-ser').value = r.serial;
+    toast('Serial: ' + r.serial);
+  }
+}
+
+async function safeMode() {
+  const r = await api('/stealth/api/apply', {action:'safe_mode'});
+  toast(r.ok ? (r.safe ? 'Safe mode ON — originals restored' : 'Safe mode OFF')
+             : 'Error', r.ok?'ok':'er');
+  const b = document.getElementById('safe-btn');
+  if (b) b.textContent = r.safe ? 'Exit safe mode' : 'Safe mode';
+}
+
+/* ── MAC ────────────────────────────────────────────────────── */
+async function applyMac() {
+  const r = await api('/stealth/api/apply', {
+    action:'mac',
+    iface: document.getElementById('net-if').value,
+    mac:   document.getElementById('net-mac').value,
+  });
+  toast(r.ok ? 'MAC applied' : (r.error||'Error'), r.ok?'ok':'er');
+}
+
+async function randMac() {
+  const iface = document.getElementById('net-if').value;
+  const r = await api('/stealth/api/apply', {action:'rand_mac', iface});
+  if (r.mac) { document.getElementById('net-mac').value = r.mac; toast('MAC: '+r.mac); }
+}
+
+/* ── Tailscale ──────────────────────────────────────────────── */
+async function loadTs() {
+  const r = await api('/stealth/api/tailscale');
+  const el = document.getElementById('ts-st');
+  const sb = document.getElementById('s-ts');
+  if (r.connected) {
+    el.innerHTML = '<span class="dot d-ok" aria-hidden="true"></span>Connected · ' + r.ip;
+    if (sb) sb.textContent = 'Tailscale: ' + r.ip;
+  } else {
+    el.innerHTML = '<span class="dot d-er" aria-hidden="true"></span>' + (r.state||'disconnected');
+    if (sb) sb.textContent = 'Tailscale: off';
+  }
+}
+
+async function tsUp() {
+  await api('/stealth/api/apply', {action:'ts_up'});
+  toast('Reconnecting…');
+  setTimeout(loadTs, 4000);
+}
+
+/* ── Tailscale Funnel ───────────────────────────────────────── */
+async function loadFunnel() {
+  const r  = await api('/stealth/api/funnel');
+  const el = document.getElementById('fn-st');
+  if (!el) return;
+  if (r.active && r.url) {
+    el.innerHTML = '<span class="dot d-ok" aria-hidden="true"></span>Active — ' +
+      '<a href="' + r.url + '" target="_blank" rel="noopener" ' +
+      'style="color:var(--ac)">' + r.url + '</a>';
+  } else if (r.active) {
+    el.innerHTML = '<span class="dot d-ok" aria-hidden="true"></span>Active (fetching URL…)';
+  } else {
+    el.innerHTML = '<span class="dot d-er" aria-hidden="true"></span>Off — no public URL';
+  }
+}
+
+async function funnelOn() {
+  const r = await api('/stealth/api/apply', {action:'ts_funnel_on'});
+  toast(r.ok ? 'Funnel enabling — may take a few seconds' : (r.error||'Error'),
+        r.ok ? 'ok' : 'er');
+  if (r.ok) setTimeout(loadFunnel, 5000);
+}
+
+async function funnelOff() {
+  const r = await api('/stealth/api/apply', {action:'ts_funnel_off'});
+  toast(r.ok ? 'Funnel disabled' : (r.error||'Error'), r.ok ? 'ok' : 'er');
+  if (r.ok) setTimeout(loadFunnel, 2000);
+}
+
+/* ── DuckDNS ────────────────────────────────────────────────── */
+async function applyDdns() {
+  const r = await api('/stealth/api/apply', {
+    action: 'duckdns',
+    host:  document.getElementById('ddns-h').value,
+    token: document.getElementById('ddns-t').value,
+  });
+  const el = document.getElementById('ddns-st');
+  el.textContent = r.ok ? 'Updated — external IP: '+(r.ip||'?') : (r.error||'Failed');
+  el.style.color  = r.ok ? 'var(--ok)' : 'var(--er)';
+  toast(r.ok ? 'DuckDNS updated' : 'DuckDNS failed', r.ok?'ok':'er');
+}
+
+/* ── Status / Stats ─────────────────────────────────────────── */
+async function loadStatus() {
+  const r = await api('/stealth/api/status');
+  document.getElementById('u-mfr').value    = r.mfr       || '';
+  document.getElementById('u-prod').value   = r.prod      || '';
+  document.getElementById('u-vid').value    = r.vid       || '';
+  document.getElementById('u-pid').value    = r.pid       || '';
+  document.getElementById('u-ser').value    = r.ser       || '';
+  document.getElementById('u-bcdusb').value = r.bcdUSB    || '0x0200';
+  document.getElementById('net-mac').value  = r.mac       || '';
+  document.getElementById('ddns-h').value   = r.ddns_host || '';
+  // Show which interfaces have persisted MACs
+  const mp  = r.mac_persist || {};
+  const mps = document.getElementById('mac-persist-st');
+  if (mps) {
+    const entries = Object.entries(mp).filter(([,v]) => v);
+    mps.innerHTML = entries.length
+      ? '<span class="dot d-ok" aria-hidden="true"></span>Boot persist: ' +
+        entries.map(([i, m]) => i + ' → ' + m).join(', ')
+      : '';
+  }
+}
+
+async function loadStats() {
+  const r = await api('/stealth/api/stats');
+  const t = r.temp ? r.temp + ' °C' : '—';
+  document.getElementById('s-temp').textContent = t;
+  document.getElementById('s-up').textContent   = r.uptime || '—';
+  document.getElementById('s-ip').textContent   = r.ip     || '—';
+  document.getElementById('sys-inf').innerHTML  =
+    'CPU: '+t+' &nbsp;·&nbsp; Up: '+(r.uptime||'—')+
+    ' &nbsp;·&nbsp; IP: '+(r.ip||'—');
+  const kl = document.getElementById('kvm-last');
+  kl.innerHTML = r.kvm
+    ? '<span class="dot d-ok" aria-hidden="true"></span>Last KVM access: '+
+      r.kvm.time + ' from ' + r.kvm.ip
+    : 'No KVM connections logged yet.';
+  const sl = document.getElementById('sess-log');
+  if (sl) sl.textContent = (r.sess_log||[]).join('\n');
+}
+
+/* ── Logs ───────────────────────────────────────────────────── */
+async function refreshLogs() {
+  const src = document.getElementById('log-src').value;
+  const r   = await api('/stealth/api/logs?source=' + src);
+  document.getElementById('log-view').textContent = r.content || '(empty)';
+}
+
+/* ── Backup / Restore ───────────────────────────────────────── */
+function dlBackup() { location.href = '/stealth/api/backup'; }
+
+async function ulRestore(input) {
+  const f = input.files[0];
+  if (!f) return;
+  let d;
+  try { d = JSON.parse(await f.text()); }
+  catch { toast('Invalid JSON file', 'er'); return; }
+  const r = await api('/stealth/api/restore', d);
+  toast(r.ok ? 'Config restored — reload page' : (r.error||'Error'),
+        r.ok?'ok':'er');
+}
+
+/* ── Reboot ─────────────────────────────────────────────────── */
+async function doReboot() {
+  if (!confirm('Reboot the device? Active KVM session will be interrupted.')) return;
+  await api('/stealth/api/apply-reboot', {});
+  toast('Rebooting…');
+}
+
+/* ── Init ───────────────────────────────────────────────────── */
+buildPills();
+loadStatus();
+loadStats();
+loadTs();
+loadFunnel();
+refreshLogs();
+setInterval(loadStats,  30000);
+setInterval(loadTs,     20000);
+setInterval(loadFunnel, 60000);
+</script>
+</body>
+</html>"""
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Routes
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    cfg = _load()
+    _ensure_defaults(cfg)
+    if request.method == "POST":
+        ip = _client_ip()
+        if request.form.get("_csrf") != session.get("login_csrf"):
+            return render_template_string(
+                LOGIN_HTML, error="Invalid request.", csrf=_fresh_login_csrf()), 400
+        _apply_delay(ip)
+        pw     = request.form.get("pw", "")
+        stored = cfg.get("auth", {}).get("password_hash", "")
+        if _check_pw(pw, stored):
+            _record_ok(ip)
+            session.clear()
+            session["ok"]   = True
+            session["t"]    = time.time()
+            session["csrf"] = secrets.token_hex(32)
+            _al.info(f"Login OK from {ip}")
+            return redirect(_stealth())
+        _record_fail(ip)
+        n = _login_fails.get(ip, 0)
+        _al.info(f"razz-stealth: Failed login from {ip} (attempt {n})")
+        return render_template_string(
+            LOGIN_HTML, error="Incorrect password.", csrf=_fresh_login_csrf()), 401
+    return render_template_string(LOGIN_HTML, error=None, csrf=_fresh_login_csrf())
+
+
+@app.route("/")
+def index():
+    if not _authed(): return redirect(_stealth("login"))
+    profiles = [{"name":p["name"],"mfr":p["mfr"],"prod":p["prod"],
+                 "vid":p["vid"],"pid":p["pid"]} for p in USB_PROFILES]
+    return render_template_string(MAIN_HTML,
+        csrf=session.get("csrf",""), profiles=profiles)
+
+
+@app.route("/api/status")
+def api_status():
+    if not _authed(): return jsonify({"error":"auth"}), 401
+    cfg = _load()
+    return jsonify({
+        "mfr":        _usb_r("strings/0x409/manufacturer"),
+        "prod":       _usb_r("strings/0x409/product"),
+        "ser":        _usb_r("strings/0x409/serialnumber"),
+        "vid":        _usb_r("idVendor"),
+        "pid":        _usb_r("idProduct"),
+        "bcdUSB":     _usb_r("bcdUSB"),
+        "mac":        _cur_mac("eth0"),
+        "ddns_host":  cfg.get("duckdns", {}).get("host", ""),
+        "mac_persist": cfg.get("mac_persist", {}),
+    })
+
+
+@app.route("/api/stats")
+def api_stats():
+    if not _authed(): return jsonify({"error":"auth"}), 401
+    try:
+        sl = Path(SESS_LOG).read_text().splitlines()[-20:][::-1]
+    except Exception:
+        sl = []
+    return jsonify({
+        "temp":     _cpu_temp(),
+        "uptime":   _uptime(),
+        "ip":       _local_ip(),
+        "kvm":      _kvm_last(),
+        "sess_log": sl,
+    })
+
+
+@app.route("/api/tailscale")
+def api_tailscale():
+    if not _authed(): return jsonify({"error":"auth"}), 401
+    return jsonify(_tailscale_status())
+
+
+@app.route("/api/funnel")
+def api_funnel():
+    if not _authed(): return jsonify({"error":"auth"}), 401
+    return jsonify(_funnel_status())
+
+
+@app.route("/api/logs")
+def api_logs():
+    if not _authed(): return jsonify({"error":"auth"}), 401
+    src = request.args.get("source", "auth")
+    return jsonify({"content": _tail_log(src)})
+
+
+@app.route("/api/backup")
+def api_backup():
+    if not _authed(): return redirect(_stealth("login"))
+    cfg  = _load()
+    safe = {k: v for k, v in cfg.items() if k != "auth"}
+    return Response(
+        json.dumps(safe, indent=2),
+        mimetype="application/json",
+        headers={"Content-Disposition": "attachment; filename=razz-config.json"},
+    )
+
+
+@app.route("/api/restore", methods=["POST"])
+def api_restore():
+    if not _authed(): return jsonify({"error":"auth"}), 401
+    if not _csrf_ok(): return jsonify({"error":"csrf"}), 403
+    d = request.get_json(force=True, silent=True) or {}
+    if not isinstance(d, dict):
+        return jsonify({"error": "Invalid format"}), 400
+    cfg = _load()
+    d["auth"] = cfg.get("auth", {})   # preserve auth — never restore from backup
+    _save(d)
+    _log_sess(f"Config restored via upload from {_client_ip()}")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/lock", methods=["POST"])
+def api_lock():
+    if not _csrf_ok(): return jsonify({"error":"csrf"}), 403
+    _log_sess(f"Panel locked by {_client_ip()}")
+    session.clear()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/randomize")
+def api_randomize():
+    if not _authed(): return jsonify({"error":"auth"}), 401
+    ser = _rand_serial("RZ")
+    _usb_w("strings/0x409/serialnumber", ser)
+    return jsonify({"ok": True, "serial": ser})
+
+
+@app.route("/api/apply", methods=["POST"])
+def api_apply():
+    if not _authed(): return jsonify({"error":"auth"}), 401
+    if not _csrf_ok():  return jsonify({"error":"csrf"}), 403
+    d   = request.get_json(force=True, silent=True) or {}
+    act = d.get("action", "")
+    cfg = _load()
+    try:
+
+        if act == "identity":
+            _apply_usb(d.get("mfr",""), d.get("prod",""), d.get("ser",""),
+                       d.get("vid"), d.get("pid"))
+            _log_sess(f"USB identity: {d.get('mfr')} / {d.get('prod')}")
+            return jsonify({"ok": True})
+
+        elif act == "profile":
+            idx = int(d.get("idx", 0))
+            if not 0 <= idx < len(USB_PROFILES):
+                return jsonify({"error": "Bad index"}), 400
+            p   = USB_PROFILES[idx]
+            ser = _rand_serial(p["pfx"])
+            _apply_usb(p["mfr"], p["prod"], ser, p["vid"], p["pid"])
+            cfg["usb"] = {"profile_idx": idx}
+            _save(cfg)
+            _log_sess(f"USB profile: {p['name']}")
+            return jsonify({"ok": True})
+
+        elif act == "mac":
+            iface, mac = d.get("iface","eth0"), d.get("mac","")
+            if not re.match(r"^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$", mac):
+                return jsonify({"error": "Invalid MAC format"}), 400
+            _set_mac(iface, mac)
+            _persist_mac(iface, mac)   # write boot-persist systemd service
+            _log_sess(f"MAC {iface}: {mac} (persisted on boot)")
+            return jsonify({"ok": True})
+
+        elif act == "rand_mac":
+            iface = d.get("iface", "eth0")
+            mac   = _rand_mac()
+            _set_mac(iface, mac)
+            _log_sess(f"MAC randomized {iface}: {mac}")
+            return jsonify({"ok": True, "mac": mac})
+
+        elif act == "safe_mode":
+            in_safe = cfg.get("safe_mode", False)
+            if not in_safe:
+                _apply_usb(ORIG["manufacturer"], ORIG["product"], ORIG["serial"],
+                           ORIG["idVendor"], ORIG["idProduct"])
+                cfg["safe_mode"] = True
+            else:
+                idx = cfg.get("usb", {}).get("profile_idx", 0)
+                if 0 <= idx < len(USB_PROFILES):
+                    p = USB_PROFILES[idx]
+                    _apply_usb(p["mfr"], p["prod"], _rand_serial(p["pfx"]),
+                               p["vid"], p["pid"])
+                cfg["safe_mode"] = False
+            _save(cfg)
+            _log_sess(f"Safe mode: {cfg['safe_mode']}")
+            return jsonify({"ok": True, "safe": cfg["safe_mode"]})
+
+        elif act == "duckdns":
+            host  = d.get("host",  "").strip()
+            token = d.get("token", "").strip()
+            if not host or not token:
+                return jsonify({"error": "Hostname and token required"}), 400
+            if _ddns_update(host, token):
+                cfg["duckdns"] = {"host": host, "token": token}
+                _save(cfg)
+                _ddns_cron(host, token)
+                ip = _ext_ip()
+                _log_sess(f"DuckDNS: {host}.duckdns.org -> {ip}")
+                return jsonify({"ok": True, "ip": ip})
+            return jsonify({"ok": False,
+                            "error": "DuckDNS update failed -- check hostname and token"})
+
+        elif act == "ts_up":
+            subprocess.Popen(["tailscale","up","--accept-routes"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            _log_sess("Tailscale reconnect triggered")
+            return jsonify({"ok": True})
+
+        elif act == "ts_funnel_on":
+            subprocess.Popen(["tailscale","funnel","443"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            _log_sess("Tailscale Funnel enabled on :443")
+            return jsonify({"ok": True})
+
+        elif act == "ts_funnel_off":
+            subprocess.Popen(["tailscale","funnel","--remove"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            _log_sess("Tailscale Funnel disabled")
+            return jsonify({"ok": True})
+
+        else:
+            return jsonify({"error": f"Unknown action: {act}"}), 400
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/apply-reboot", methods=["POST"])
+def api_reboot():
+    if not _authed(): return jsonify({"error":"auth"}), 401
+    if not _csrf_ok(): return jsonify({"error":"csrf"}), 403
+    _log_sess(f"Reboot by {_client_ip()}")
+    subprocess.Popen(["shutdown","-r","now"])
+    return jsonify({"ok": True})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WiFi Management API  (no auth -- accessible from main TinyPilot page)
+# Proxied by nginx at /api/wifi/* -> 127.0.0.1:7777/api/wifi/*
+# Uses nmcli / NetworkManager (Pi OS Bookworm default)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _nm(*args, timeout=15):
+    """Run an nmcli command, return CompletedProcess."""
+    return subprocess.run(["nmcli"] + list(args),
+                          capture_output=True, text=True, timeout=timeout)
+
+
+@app.route("/api/wifi/status")
+def api_wifi_status():
+    """Current WiFi connection: ssid, connected, ip, signal."""
+    try:
+        r = _nm("-t", "-f",
+                "GENERAL.CONNECTION,GENERAL.STATE,IP4.ADDRESS,ACTIVE-CONNECTION.STATE",
+                "device", "show", "wlan0")
+        info: dict = {}
+        for line in r.stdout.splitlines():
+            k, _, v = line.partition(":")
+            info[k.strip()] = v.strip()
+        ssid  = info.get("GENERAL.CONNECTION", "")
+        state = info.get("GENERAL.STATE", "")
+        ip    = info.get("IP4.ADDRESS[1]", "").split("/")[0]
+        conn  = "connected" in state.lower() and ssid not in ("", "--")
+        sig = 0
+        try:
+            sr = _nm("-t", "-f", "SIGNAL,SSID", "device", "wifi", "list")
+            for sl in sr.stdout.splitlines():
+                parts = sl.split(":")
+                if len(parts) >= 2 and parts[1].strip() == ssid:
+                    sig = int(parts[0]) if parts[0].isdigit() else 0
+                    break
+        except Exception:
+            pass
+        return jsonify({
+            "ssid":      "" if ssid == "--" else ssid,
+            "connected": conn,
+            "ip":        ip,
+            "signal":    sig,
+        })
+    except Exception as e:
+        return jsonify({"ssid": "", "connected": False, "ip": "", "signal": 0,
+                        "error": str(e)})
+
+
+@app.route("/api/wifi/saved")
+def api_wifi_saved():
+    """List saved WiFi connection names."""
+    try:
+        r = _nm("-t", "-f", "NAME,TYPE,ACTIVE", "connection", "show")
+        nets = []
+        for line in r.stdout.splitlines():
+            parts = line.split(":")
+            if len(parts) >= 2 and parts[1] == "802-11-wireless":
+                nets.append({
+                    "name":   parts[0],
+                    "active": (parts[2].lower() == "yes") if len(parts) > 2 else False,
+                })
+        return jsonify(nets)
+    except Exception as e:
+        return jsonify([])
+
+
+@app.route("/api/wifi/scan")
+def api_wifi_scan():
+    """Scan for nearby WiFi networks."""
+    try:
+        r = _nm("-t", "-f", "SSID,SIGNAL,SECURITY",
+                "device", "wifi", "list", "--rescan", "yes", timeout=22)
+        nets, seen = [], set()
+        for line in r.stdout.splitlines():
+            parts = line.split(":")
+            ssid  = parts[0].strip() if parts else ""
+            if not ssid or ssid == "--" or ssid in seen:
+                continue
+            seen.add(ssid)
+            sig  = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+            sec  = parts[2].strip()              if len(parts) > 2 else ""
+            nets.append({"ssid": ssid, "signal": sig,
+                         "secure": bool(sec and sec != "--")})
+        return jsonify(sorted(nets, key=lambda x: -x["signal"]))
+    except Exception as e:
+        return jsonify([])
+
+
+@app.route("/api/wifi/add", methods=["POST"])
+def api_wifi_add():
+    """Add (or replace) a saved WiFi network. Does NOT force-connect."""
+    d    = request.get_json(force=True, silent=True) or {}
+    ssid = (d.get("ssid") or "").strip()
+    pwd  = (d.get("password") or "").strip()
+    prio = int(d.get("priority", 100))
+    if not ssid:
+        return jsonify({"ok": False, "error": "SSID required"}), 400
+    if not re.match(r"^[ -~]{1,32}$", ssid):
+        return jsonify({"ok": False, "error": "Invalid SSID"}), 400
+
+    _nm("connection", "delete", ssid, timeout=5)
+
+    cmd = ["connection", "add",
+           "type", "wifi", "ifname", "wlan0",
+           "con-name", ssid, "ssid", ssid,
+           "connection.autoconnect", "yes",
+           "connection.autoconnect-priority", str(prio)]
+    if pwd:
+        cmd += ["wifi-sec.key-mgmt", "wpa-psk", "wifi-sec.psk", pwd]
+
+    r = _nm(*cmd, timeout=12)
+    if r.returncode == 0:
+        _log_sess(f"WiFi network saved: {ssid}")
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": r.stderr.strip() or r.stdout.strip()})
+
+
+@app.route("/api/wifi/remove", methods=["POST"])
+def api_wifi_remove():
+    """Remove a saved WiFi connection by name."""
+    d    = request.get_json(force=True, silent=True) or {}
+    name = (d.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "name required"}), 400
+    r = _nm("connection", "delete", name, timeout=10)
+    if r.returncode == 0:
+        _log_sess(f"WiFi network removed: {name}")
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": r.stderr.strip()})
+
+
+@app.route("/api/wifi/connect", methods=["POST"])
+def api_wifi_connect():
+    """Force-connect to a specific saved network by name."""
+    d    = request.get_json(force=True, silent=True) or {}
+    name = (d.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "name required"}), 400
+    r = _nm("connection", "up", name, timeout=25)
+    if r.returncode == 0:
+        _log_sess(f"WiFi connect: {name}")
+        return jsonify({"ok": True})
+    err = (r.stderr or r.stdout).strip()
+    return jsonify({"ok": False, "error": err[:120]})
+
+
+# -- Boot --
+_boot()
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=7777, debug=False)
